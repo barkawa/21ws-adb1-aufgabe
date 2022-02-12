@@ -8,7 +8,6 @@ pub fn parse(s: &str) -> Result<Node> {
         iter: s.chars().peekable(),
     };
 
-    todo!(); // check the seq_ids for consistency
     parser.start()
 }
 
@@ -16,12 +15,12 @@ struct NewickParser<'a> {
     iter: Peekable<Chars<'a>>,
 }
 
-// A parser for Newick formatted strings using the following
-// simple grammar (without branch lengths and names):
+// A LL(1) recursive descent parser for Newick formatted strings
+// using the following simple grammar (w/o branch lengths and names):
 //      START -> NODE ';'
 //      NODE  -> '(' NODE ',' NODE ')' | sequence_id
 impl<'a> NewickParser<'a> {
-    
+
     // START -> NODE ';'
     fn start(&mut self) -> Result<Node> {
         let root = self.node()?;
@@ -52,7 +51,8 @@ impl<'a> NewickParser<'a> {
                 Ok(Node::with_sequence_id(seq_id))
             }
 
-            _ => Err(anyhow!("Failed matching NODE -> (NODE,NODE) | id")),
+            Some(other) => Err(anyhow!("Syntax error: Expected '(' or a number, got {other}")),
+            _ => panic!(),
         }
     }
 

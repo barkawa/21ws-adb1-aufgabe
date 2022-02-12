@@ -14,6 +14,18 @@ pub fn get_min_cost(args: &Args) -> Result<f64> {
     let cost_matrix = parse_cost_matrix(&args.cost_matrix)?;
     let tree = newick_parser::parse(&args.tree)?;
 
+    // check sequence ids for consistency
+    let id_list = tree.get_id_list();
+
+    if !id_list.iter().sorted().cloned().eq(1..id_list.len()+1) {
+        return Err(anyhow!("Bad sequence ID's"));
+    }
+
+    if id_list.len() != sequences.len() {
+        return Err(anyhow!("Number of sequence ID's doesn't match number of sequences"));
+    }
+
+    // get the total cost of all the sequence positions
     let mut total_cost = 0.0;
     
     for i_col in 0..sequences[0].len() {
@@ -48,8 +60,8 @@ fn parse_cost_matrix(path: &str) -> Result<HashMap<(dna::Base, dna::Base), f64>>
             .iter()
             .skip(1)
             .map(|x| &x[0])
-            .eq(["A", "C", "T", "G"].iter()))
-    {
+            .eq(["A", "C", "T", "G"].iter())
+    ) {
         return Err(anyhow!("Couldn't parse matrix indices"));
     }
 

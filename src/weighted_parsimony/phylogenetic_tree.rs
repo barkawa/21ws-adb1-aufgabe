@@ -71,4 +71,16 @@ impl Node {
 
         costs
     }
+
+    pub fn get_id_list(&self) -> Vec<usize> {
+        match self.sequence_id {
+            Some(id) => vec![id],
+            None => {
+                let mut ids = vec![];
+                ids.extend(self.left.as_ref().unwrap().get_id_list());
+                ids.extend(self.right.as_ref().unwrap().get_id_list());
+                ids
+            },
+        }
+    }
 }
