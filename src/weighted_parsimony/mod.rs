@@ -1,119 +1,105 @@
-use std::{iter::Peekable, num::ParseIntError};
+pub mod dna;
+pub mod newick_parser;
+pub mod phylogenetic_tree;
 
-use anyhow::{Result, anyhow};
+use crate::Args;
+use anyhow::{anyhow, Result};
+use itertools::Itertools;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
+pub fn get_min_cost(args: &Args) -> Result<f64> {
+    let sequences = parse_sequences(&args.sequences)?;
+    let cost_matrix = parse_cost_matrix(&args.cost_matrix)?;
+    let tree = newick_parser::parse(&args.tree)?;
 
-pub fn get_min_score() -> Result<f64> {
-    // open seq file
-    // parse seq file into ndarray
-
-    // open matrix file
-    // parse matrix file into ndarray
-
-    // open tree file
-    // parse and construct closure
-
-    // for col in sequences.cols
-    // do the thing
-
-    Ok(420.69)
+    let mut total_cost = 0.0;
+    
+    for i_col in 0..sequences[0].len() {
+        let col: Vec<_> = sequences
+            .iter()
+            .map(|x| x[i_col])
+            .collect();
+        
+        let min_cost = tree
+            .get_cost(&col, &cost_matrix)
+            .into_values()
+            .reduce(f64::min)
+            .unwrap();
+        
+            total_cost += min_cost;
+    }
+    Ok(total_cost)
 }
 
+fn parse_cost_matrix(path: &str) -> Result<HashMap<(dna::Base, dna::Base), f64>> {
+    let file = std::fs::read_to_string(path)?;
 
+    // split each row by whitespace
+    let mut raw_matrix: Vec<Vec<_>> = file
+        .lines()
+        .map(|l| l.split_whitespace().collect())
+        .collect();
 
-pub struct NewickParser<'a> {
-    iter: &'a mut Peekable<std::str::Chars<'a>>,
-}
-
-impl<'a> NewickParser<'a> {
-    pub fn new(iter: &'a mut Peekable<std::str::Chars<'a>>) -> Self { 
-        Self { iter } 
+    // check if the base annotations are correct
+    if !(raw_matrix[0].iter().eq(["A", "C", "T", "G"].iter())
+        && raw_matrix
+            .iter()
+            .skip(1)
+            .map(|x| &x[0])
+            .eq(["A", "C", "T", "G"].iter()))
+    {
+        return Err(anyhow!("Couldn't parse matrix indices"));
     }
 
-    // Simple grammar for the Newick-Format without branch lengths and names:
-    //      START -> NODE ';'
-    //      NODE  -> '(' NODE ',' NODE ')' | sequence_id
-    //
-    pub fn parse(&mut self) -> Result<()> /* -> Result<impl Fn([u8]) -> f64> */ {
-        self.start()
+    // remove the base annotations
+    raw_matrix.remove(0);
+    for row in &mut raw_matrix {
+        row.remove(0);
     }
 
-    fn start(&mut self) -> Result<()> {
-        self.node()?;
-        self.assert_next(';')?;
-        Ok(())
-    }
+    // construct the cost "matrix"
+    let mut cost_matrix: HashMap<(dna::Base, dna::Base), f64> = HashMap::new();
 
-    fn node(&mut self) -> Result<()> {
-        match self.iter.peek() {
-
-            // NODE -> '(' NODE ',' NODE ')'
-            Some(val) if *val == '(' => {
-                self.assert_next('(')?;
-                self.node()?;
-                self.assert_next(',')?;
-                self.node()?;
-                self.assert_next(')')?;
-                Ok(())
-            },
-
-            // NODE -> sequence_id
-            Some(val) if ('0'..='9').contains(val) =>  {
-                let seq_id = self.assert_and_parse_sequence_id()?;
-                println!("sequence id: {seq_id}");
-                Ok(())
-            },
-
-            _ => Err(anyhow!("Syntax error")),
+    use dna::Base::*;
+    for (row, base_from) in raw_matrix.iter().zip([A, C, T, G].iter()) {
+        for (cost, base_to) in row.iter().zip([A, C, T, G].iter()) {
+            let cost = cost.parse::<u32>()? as f64;
+            cost_matrix.insert((*base_from, *base_to), cost);
+            cost_matrix.insert((*base_to, *base_from), cost);
         }
     }
 
-
-    fn assert_next(&mut self, c: char) -> Result<()> {
-        
-        match self.iter.next() {
-            Some(val) if val == c => Ok(()),
-            Some(val) => Err(anyhow!("Syntax error at {}", val)),
-            None => Err(anyhow!("Syntax error")),
-        }
+    // check if the cost matrix has an entry for every base combination
+    if cost_matrix.len() != 16 {
+        return Err(anyhow!("Couldn't parse matrix entries"));
     }
 
-
-    fn assert_and_parse_sequence_id(&mut self) -> Result<u32, ParseIntError> {
-        
-        let mut id = "".to_string();
-        
-        while let Some(c) = self.iter.peek() {
-            if ('0'..='9').contains(c) {
-                id.push(*c);
-                self.iter.next();
-            } else {
-                break;
-            }
-        }
-
-        id.parse::<u32>()
-    }
+    Ok(cost_matrix)
 }
 
+fn parse_sequences(path: &str) -> Result<Vec<Vec<dna::Base>>> {
+    let reader = BufReader::new(File::open(path)?);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    let mut sequences: Vec<Vec<dna::Base>> = Vec::new();
 
-    #[test]
-    fn basic_tree() {
-        let string = "((2,3),((1,4),5));";
-        let mut iter = string.chars().peekable();
-        let mut parser = NewickParser::new(&mut iter);
-        assert!(parser.parse().is_ok());
+    // read each line, and parse the characters into dna::Base's
+    for line in reader.lines() {
+        let sequence: Result<Vec<dna::Base>> =
+            line?.chars().map(|c| dna::Base::try_from(c)).collect();
+
+        sequences.push(sequence?);
     }
 
-    #[test]
-    fn wrong() {
-        let string = "(1bla((2,3),4))";
-        let mut iter = string.chars().peekable();
-        let mut parser = NewickParser::new(&mut iter);
-        assert!(parser.parse().is_err());
+    if sequences.is_empty() {
+        return Err(anyhow!("No sequences found in {}", path));
     }
+
+    // check if sequences are equal length
+    if !sequences.iter().map(|s| s.len()).all_equal() {
+        return Err(anyhow!("Sequences must be equal in length."));
+    }
+
+    Ok(sequences)
 }
