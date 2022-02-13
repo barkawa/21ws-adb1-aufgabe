@@ -1,7 +1,7 @@
 # Programmieraufgabe
-Algorithmen der Bioinformatik I
-Konrad Buchmann
-12.2.22
+*Algorithmen der Bioinformatik I* 
+*Konrad Buchmann* 
+*12.2.22* 
 
 ### Prerequisites
 A reasonably recent version of [Rust](https://www.rust-lang.org/tools/install).
