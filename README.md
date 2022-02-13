@@ -1,6 +1,9 @@
 # Programmieraufgabe
+
 *Algorithmen der Bioinformatik I* 
+
 *Konrad Buchmann* 
+
 *12.2.22* 
 
 ### Prerequisites
